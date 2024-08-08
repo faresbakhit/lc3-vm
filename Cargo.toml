@@ -1,0 +1,18 @@
+[package]
+name = "lc3-vm"
+version = "0.1.0"
+authors = ["Fares A. Bakhit <fares@duck.com>"]
+edition = "2021"
+description = "Virtual machine for the LC-3 computer."
+homepage = "https://github.com/faresbakhit/lc3-vm"
+repository = "https://github.com/faresbakhit/lc3-vm"
+
+[dependencies]
+lc3 = { version = "0.1.0", path = "lc3", features = ["termios"] }
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1
+panic = "abort"
+opt-level = 3

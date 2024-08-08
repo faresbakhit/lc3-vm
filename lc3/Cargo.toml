@@ -1,0 +1,16 @@
+[package]
+name = "lc3"
+version = "0.1.0"
+authors = ["Fares A. Bakhit <fares@duck.com>"]
+edition = "2021"
+description = "Virtual machine for the LC-3 computer."
+homepage = "https://github.com/faresbakhit/lc3-vm"
+repository = "https://github.com/faresbakhit/lc3-vm"
+
+[dependencies]
+libc = "0.2.155"
+termios = { version = "0.3.3", optional = true }
+
+[features]
+std = []
+termios = ["std", "dep:termios"]
