@@ -16,7 +16,7 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
 
-use core::ops::{Index, IndexMut};
+use core::ops::{Index, IndexMut, Range};
 use core::slice;
 
 use crate::IoDevice;
@@ -97,5 +97,19 @@ impl<IO: IoDevice> AsRef<[u16; LEN]> for Memory<IO> {
 impl<IO: IoDevice> AsMut<[u16; LEN]> for Memory<IO> {
     fn as_mut(&mut self) -> &mut [u16; LEN] {
         &mut self.words
+    }
+}
+
+impl<IO: IoDevice> Index<Range<usize>> for Memory<IO> {
+    type Output = [u16];
+
+    fn index(&self, index: Range<usize>) -> &Self::Output {
+        self.words.index(index)
+    }
+}
+
+impl<IO: IoDevice> IndexMut<Range<usize>> for Memory<IO> {
+    fn index_mut(&mut self, index: Range<usize>) -> &mut Self::Output {
+        self.words.index_mut(index)
     }
 }

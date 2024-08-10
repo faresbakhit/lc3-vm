@@ -16,12 +16,13 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
 
+use crate::ImageFile;
 use crate::InstructionDecode;
+use crate::IoDevice;
 use crate::Memory;
 use crate::OpCode;
 use crate::TrapCode;
 use crate::{CondCodes, Registers, GPR};
-use crate::{InputDevice, IoDevice};
 use core::slice;
 
 /// LC-3 virtual machine.
@@ -40,26 +41,41 @@ impl<IO: IoDevice> LC3<IO> {
     }
 
     /// Load an image from an [`InputDevice`][`crate::InputDevice`].
-    pub fn load_image<I: InputDevice>(&mut self, mut file: I) -> Result<(), I::Error> {
+    pub fn load_image<F: ImageFile>(&mut self, file: &mut F) -> Result<(), F::Error> {
         let mut origin: [u8; 2] = [0; 2];
         file.read(&mut origin)?;
         let origin = u16::from_be_bytes(origin) as usize;
 
+        // Memory at `origin` as a slice of `u8` bytes
         let slice = {
             let data = &mut self.memory[origin] as *mut u16 as *mut u8;
             let len = (Memory::<IO>::LEN - origin) * 2;
             unsafe { slice::from_raw_parts_mut(data, len) }
         };
 
-        let end = origin + file.read(slice)?;
+        let end = origin + file.read(slice)? / 2;
 
-        unsafe {
-            self.memory
-                .as_mut()
-                .get_unchecked_mut(origin..end)
-                .iter_mut()
-                .for_each(|x| *x = u16::from_be(*x))
-        };
+        //
+        // Proof that end <= memory.len
+        //
+        // ImageFile::read guarantees 0 <= n <= slice.len().
+        // Define end as origin+n/2.
+        // Define slice.len as 2(memory.len-origin).
+        //
+        //
+        // 0      <=           n    <=               slice.len
+        // 0      <=           n/2  <=               slice.len        / 2
+        // origin <= (origin + n/2) <=               slice.len        / 2
+        // origin <= (origin + n/2) <= origin +      slice.len        / 2
+        // origin <= (origin + n/2) <= origin + (memory.len - origin)
+        // origin <=       end      <= memory.len
+        //
+        // Q.E.D.
+        //
+
+        self.memory[origin..end]
+            .iter_mut()
+            .for_each(|x| *x = u16::from_be(*x));
 
         Ok(())
     }

@@ -25,6 +25,7 @@
 
 mod condcodes;
 mod decode;
+mod image;
 mod io;
 mod lc3;
 mod memory;
@@ -36,7 +37,8 @@ mod trapcode;
 
 pub use condcodes::CondCodes;
 pub use decode::InstructionDecode;
-pub use io::{InputDevice, IoDevice, OutputDevice};
+pub use image::ImageFile;
+pub use io::IoDevice;
 pub use lc3::{Error, LC3};
 pub use memory::Memory;
 pub use opcode::OpCode;

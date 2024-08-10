@@ -43,8 +43,8 @@ fn run() -> Result<(), Error<io::Error>> {
     let mut lc3 = LC3::new(Termios::new()?);
 
     for arg in env::args().skip(1) {
-        let file = File::open(arg)?;
-        lc3.load_image(file)?;
+        let mut file = File::open(arg)?;
+        lc3.load_image(&mut file)?;
     }
 
     lc3.run()
