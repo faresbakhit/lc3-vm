@@ -50,7 +50,7 @@ impl<IO: IoDevice> LC3<IO> {
 
         // Memory at `origin` as a slice of `u8` bytes
         let slice = {
-            let data = memory[origin] as *mut u16 as *mut u8;
+            let data = &mut memory[origin] as *mut u16 as *mut u8;
             let len = (Memory::<IO>::LEN - origin) * 2;
             unsafe { slice::from_raw_parts_mut(data, len) }
         };
