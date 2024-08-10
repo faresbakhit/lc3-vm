@@ -16,7 +16,6 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
 
-use core::ops::{Index, IndexMut, Range};
 use core::slice;
 
 use crate::IoDevice;
@@ -41,75 +40,38 @@ impl<IO: IoDevice> Memory<IO> {
             io: iodevice,
         }
     }
-}
 
-impl<IO: IoDevice> Index<u16> for Memory<IO> {
-    type Output = u16;
-
-    fn index(&self, index: u16) -> &Self::Output {
-        self.index(index as usize)
-    }
-}
-
-impl<IO: IoDevice> Index<usize> for Memory<IO> {
-    type Output = u16;
-
-    #[allow(invalid_reference_casting)]
-    fn index(&self, index: usize) -> &Self::Output {
+    pub fn read(&mut self, index: u16) -> u16 {
         const KBSR: usize = 0xFE00;
         const KBDR: usize = 0xFE02;
 
-        if index == KBSR {
-            // Yes, I'm really doing this.
-            let memory = unsafe { &mut *(self as *const _ as *mut Memory<IO>) };
+        if usize::from(index) == KBSR {
             if self.io.poll() {
-                memory[KBSR] = 1 << 15;
+                self.words[KBSR] = 1 << 15;
                 let mut byte = 0;
-                let _ = memory.io.read(slice::from_mut(&mut byte));
-                memory[KBDR] = byte as u16;
+                let _ = self.io.read(slice::from_mut(&mut byte));
+                self.words[KBDR] = u16::from(byte);
             } else {
-                memory[KBSR] = 0;
+                self.words[KBSR] = 0;
             }
         }
 
-        &self.words[index]
+        self.words[index as usize]
+    }
+
+    pub fn write(&mut self, index: u16, value: u16) {
+        self.words[index as usize] = value;
     }
 }
 
-impl<IO: IoDevice> IndexMut<u16> for Memory<IO> {
-    fn index_mut(&mut self, index: u16) -> &mut Self::Output {
-        self.index_mut(index as usize)
-    }
-}
-
-impl<IO: IoDevice> IndexMut<usize> for Memory<IO> {
-    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-        &mut self.words[index]
-    }
-}
-
-impl<IO: IoDevice> AsRef<[u16; LEN]> for Memory<IO> {
-    fn as_ref(&self) -> &[u16; LEN] {
+impl<IO: IoDevice> AsRef<[u16]> for Memory<IO> {
+    fn as_ref(&self) -> &[u16] {
         &self.words
     }
 }
 
-impl<IO: IoDevice> AsMut<[u16; LEN]> for Memory<IO> {
-    fn as_mut(&mut self) -> &mut [u16; LEN] {
+impl<IO: IoDevice> AsMut<[u16]> for Memory<IO> {
+    fn as_mut(&mut self) -> &mut [u16] {
         &mut self.words
-    }
-}
-
-impl<IO: IoDevice> Index<Range<usize>> for Memory<IO> {
-    type Output = [u16];
-
-    fn index(&self, index: Range<usize>) -> &Self::Output {
-        self.words.index(index)
-    }
-}
-
-impl<IO: IoDevice> IndexMut<Range<usize>> for Memory<IO> {
-    fn index_mut(&mut self, index: Range<usize>) -> &mut Self::Output {
-        self.words.index_mut(index)
     }
 }

@@ -46,9 +46,11 @@ impl<IO: IoDevice> LC3<IO> {
         file.read(&mut origin)?;
         let origin = u16::from_be_bytes(origin) as usize;
 
+        let memory = self.memory.as_mut();
+
         // Memory at `origin` as a slice of `u8` bytes
         let slice = {
-            let data = &mut self.memory[origin] as *mut u16 as *mut u8;
+            let data = memory[origin] as *mut u16 as *mut u8;
             let len = (Memory::<IO>::LEN - origin) * 2;
             unsafe { slice::from_raw_parts_mut(data, len) }
         };
@@ -73,7 +75,7 @@ impl<IO: IoDevice> LC3<IO> {
         // Q.E.D.
         //
 
-        self.memory[origin..end]
+        memory[origin..end]
             .iter_mut()
             .for_each(|x| *x = u16::from_be(*x));
 
@@ -91,7 +93,7 @@ impl<IO: IoDevice> LC3<IO> {
 
     /// Execute next instruction.
     pub fn next_instruction(&mut self) -> Result<Status, Error<IO::Error>> {
-        let inst = self.memory[self.registers.pc];
+        let inst = self.memory.read(self.registers.pc);
 
         // All instructions with a PC offset parameter
         // require PC to be incremented.
@@ -187,7 +189,7 @@ impl<IO: IoDevice> LC3<IO> {
         let dr = inst.reg1();
         let addr = self.registers.pc as u32 + inst.imm9() as u32;
         let addr = addr as u16;
-        self.registers[dr] = self.memory[addr];
+        self.registers[dr] = self.memory.read(addr);
         self.setcc(dr);
     }
 
@@ -195,8 +197,8 @@ impl<IO: IoDevice> LC3<IO> {
         let dr = inst.reg1();
         let addr = self.registers.pc as u32 + inst.imm9() as u32;
         let addr = addr as u16;
-        let addr = self.memory[addr];
-        self.registers[dr] = self.memory[addr];
+        let addr = self.memory.read(addr);
+        self.registers[dr] = self.memory.read(addr);
         self.setcc(dr);
     }
 
@@ -205,7 +207,7 @@ impl<IO: IoDevice> LC3<IO> {
         let baser = inst.reg2();
         let addr = self.registers[baser] as u32 + inst.imm6() as u32;
         let addr = addr as u16;
-        self.registers[dr] = self.memory[addr];
+        self.registers[dr] = self.memory.read(addr);
         self.setcc(dr);
     }
 
@@ -221,15 +223,15 @@ impl<IO: IoDevice> LC3<IO> {
         let sr = inst.reg1();
         let addr = self.registers.pc as u32 + inst.imm9() as u32;
         let addr = addr as u16;
-        self.memory[addr] = self.registers[sr];
+        self.memory.write(addr, self.registers[sr]);
     }
 
     fn sti(&mut self, inst: u16) {
         let sr = inst.reg1();
         let addr = self.registers.pc as u32 + inst.imm9() as u32;
         let addr = addr as u16;
-        let addr = self.memory[addr];
-        self.memory[addr] = self.registers[sr];
+        let addr = self.memory.read(addr);
+        self.memory.write(addr, self.registers[sr]);
     }
 
     fn str(&mut self, inst: u16) {
@@ -237,7 +239,7 @@ impl<IO: IoDevice> LC3<IO> {
         let baser = inst.reg2();
         let addr = self.registers[baser] as u32 + inst.imm6() as u32;
         let addr = addr as u16;
-        self.memory[addr] = self.registers[sr];
+        self.memory.write(addr, self.registers[sr]);
     }
 
     fn setcc(&mut self, dr: GPR) {
@@ -271,11 +273,11 @@ impl<IO: IoDevice> LC3<IO> {
             }
             TrapCode::PUTS => {
                 let mut sp = self.registers.r0;
-                let mut byte = self.memory[sp] as u8;
+                let mut byte = self.memory.read(sp) as u8;
                 while byte != 0 {
                     self.memory.io.write(slice::from_ref(&byte))?;
                     sp += 1;
-                    byte = self.memory[sp] as u8;
+                    byte = self.memory.read(sp) as u8;
                 }
                 self.memory.io.flush()?;
             }
