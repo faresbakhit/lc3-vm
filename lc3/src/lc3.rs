@@ -127,13 +127,11 @@ impl<IO: IoDevice> LC3<IO> {
         let sr1 = inst.reg2();
         if inst.isbitset(5) {
             let imm5 = inst.imm5();
-            let value = self.registers[sr1] as u32 + imm5 as u32;
-            let value = value as u16;
+            let value = self.registers[sr1].wrapping_add(imm5);
             self.registers[dr] = value;
         } else {
             let sr2 = inst.reg3();
-            let value = self.registers[sr1] as u32 + self.registers[sr2] as u32;
-            let value = value as u16;
+            let value = self.registers[sr1].wrapping_add(self.registers[sr2]);
             self.registers[dr] = value;
         }
         self.setcc(dr);
@@ -162,8 +160,7 @@ impl<IO: IoDevice> LC3<IO> {
     fn br(&mut self, inst: u16) {
         let cc = inst.condcodes();
         if self.registers.cc.intersects(&cc) {
-            let value = self.registers.pc as u32 + inst.imm9() as u32;
-            let value = value as u16;
+            let value = self.registers.pc.wrapping_add(inst.imm9());
             self.registers.pc = value;
         }
     }
@@ -176,8 +173,7 @@ impl<IO: IoDevice> LC3<IO> {
     fn jsr(&mut self, inst: u16) {
         self.registers.r7 = self.registers.pc;
         if inst.isbitset(11) {
-            let value = self.registers.pc as u32 + inst.imm11() as u32;
-            let value = value as u16;
+            let value = self.registers.pc.wrapping_add(inst.imm11());
             self.registers.pc = value;
         } else {
             let baser = inst.reg2();
@@ -187,16 +183,14 @@ impl<IO: IoDevice> LC3<IO> {
 
     fn ld(&mut self, inst: u16) {
         let dr = inst.reg1();
-        let addr = self.registers.pc as u32 + inst.imm9() as u32;
-        let addr = addr as u16;
+        let addr = self.registers.pc.wrapping_add(inst.imm9());
         self.registers[dr] = self.memory.read(addr);
         self.setcc(dr);
     }
 
     fn ldi(&mut self, inst: u16) {
         let dr = inst.reg1();
-        let addr = self.registers.pc as u32 + inst.imm9() as u32;
-        let addr = addr as u16;
+        let addr = self.registers.pc.wrapping_add(inst.imm9());
         let addr = self.memory.read(addr);
         self.registers[dr] = self.memory.read(addr);
         self.setcc(dr);
@@ -205,31 +199,27 @@ impl<IO: IoDevice> LC3<IO> {
     fn ldr(&mut self, inst: u16) {
         let dr = inst.reg1();
         let baser = inst.reg2();
-        let addr = self.registers[baser] as u32 + inst.imm6() as u32;
-        let addr = addr as u16;
+        let addr = self.registers[baser].wrapping_add(inst.imm6());
         self.registers[dr] = self.memory.read(addr);
         self.setcc(dr);
     }
 
     fn lea(&mut self, inst: u16) {
         let dr = inst.reg1();
-        let value = self.registers.pc as u32 + inst.imm9() as u32;
-        let value = value as u16;
+        let value = self.registers.pc.wrapping_add(inst.imm9());
         self.registers[dr] = value;
         self.setcc(dr);
     }
 
     fn st(&mut self, inst: u16) {
         let sr = inst.reg1();
-        let addr = self.registers.pc as u32 + inst.imm9() as u32;
-        let addr = addr as u16;
+        let addr = self.registers.pc.wrapping_add(inst.imm9());
         self.memory.write(addr, self.registers[sr]);
     }
 
     fn sti(&mut self, inst: u16) {
         let sr = inst.reg1();
-        let addr = self.registers.pc as u32 + inst.imm9() as u32;
-        let addr = addr as u16;
+        let addr = self.registers.pc.wrapping_add(inst.imm9());
         let addr = self.memory.read(addr);
         self.memory.write(addr, self.registers[sr]);
     }
@@ -237,8 +227,7 @@ impl<IO: IoDevice> LC3<IO> {
     fn str(&mut self, inst: u16) {
         let sr = inst.reg1();
         let baser = inst.reg2();
-        let addr = self.registers[baser] as u32 + inst.imm6() as u32;
-        let addr = addr as u16;
+        let addr = self.registers[baser].wrapping_add(inst.imm6());
         self.memory.write(addr, self.registers[sr]);
     }
 
