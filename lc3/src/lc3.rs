@@ -23,7 +23,8 @@ use crate::Memory;
 use crate::OpCode;
 use crate::TrapCode;
 use crate::{CondCodes, Registers, GPR};
-use core::slice;
+
+use core::{fmt, slice};
 
 /// LC-3 virtual machine.
 pub struct LC3<IO: IoDevice> {
@@ -40,59 +41,31 @@ impl<IO: IoDevice> LC3<IO> {
         }
     }
 
-    /// Load an image from an [`InputDevice`][`crate::InputDevice`].
+    /// Load an image from an [`ImageFile`][`crate::ImageFile`].
     pub fn load_image<F: ImageFile>(&mut self, file: &mut F) -> Result<(), F::Error> {
-        let mut origin: [u8; 2] = [0; 2];
-        file.read(&mut origin)?;
-        let origin = u16::from_be_bytes(origin) as usize;
-
-        let memory = self.memory.as_mut();
-
-        // Memory at `origin` as a slice of `u8` bytes
-        let slice = {
-            let data = &mut memory[origin] as *mut u16 as *mut u8;
-            let len = (Memory::<IO>::LEN - origin) * 2;
-            unsafe { slice::from_raw_parts_mut(data, len) }
-        };
-
-        let end = origin + file.read(slice)? / 2;
-
-        //
-        // Proof that end <= memory.len
-        //
-        // ImageFile::read guarantees 0 <= n <= slice.len().
-        // Define end as origin+n/2.
-        // Define slice.len as 2(memory.len-origin).
-        //
-        //
-        // 0      <=           n    <=               slice.len
-        // 0      <=           n/2  <=               slice.len        / 2
-        // origin <= (origin + n/2) <=               slice.len        / 2
-        // origin <= (origin + n/2) <= origin +      slice.len        / 2
-        // origin <= (origin + n/2) <= origin + (memory.len - origin)
-        // origin <=       end      <= memory.len
-        //
-        // Q.E.D.
-        //
-
-        memory[origin..end]
-            .iter_mut()
-            .for_each(|x| *x = u16::from_be(*x));
-
-        Ok(())
+        file.load_image_into(self.memory.as_mut())
     }
 
     /// Run indefinitely.
     pub fn run(&mut self) -> Result<(), Error<IO::Error>> {
-        loop {
-            if let Status::Halt = self.next_instruction()? {
-                break Ok(());
-            }
+        while self.memory.read(Memory::<IO>::MCR).isbitset(15) {
+            self.next_instruction()?;
         }
+
+        Ok(())
+    }
+
+    /// Run indefinitely with trap emulated.
+    pub fn run_with_trap_emulated(&mut self) -> Result<(), Error<IO::Error>> {
+        while self.memory.read(Memory::<IO>::MCR).isbitset(15) {
+            self.next_instruction_with_trap_emulated()?;
+        }
+
+        Ok(())
     }
 
     /// Execute next instruction.
-    pub fn next_instruction(&mut self) -> Result<Status, Error<IO::Error>> {
+    pub fn next_instruction(&mut self) -> Result<(), Error<IO::Error>> {
         let inst = self.memory.read(self.registers.pc);
 
         // All instructions with a PC offset parameter
@@ -113,11 +86,40 @@ impl<IO: IoDevice> LC3<IO> {
             OpCode::ST => self.st(inst),
             OpCode::STI => self.sti(inst),
             OpCode::STR => self.str(inst),
-            OpCode::TRAP => return self.trap(inst),
+            OpCode::TRAP => self.trap(inst),
             OpCode::RTI | OpCode::RES => return Err(Error::OpCodeNotImplemented),
         }
 
-        Ok(Status::Continue)
+        Ok(())
+    }
+
+    /// Execute next instruction with trap emulated.
+    pub fn next_instruction_with_trap_emulated(&mut self) -> Result<(), Error<IO::Error>> {
+        let inst = self.memory.read(self.registers.pc);
+
+        // All instructions with a PC offset parameter
+        // require PC to be incremented.
+        self.registers.pc = self.registers.pc.wrapping_add(1);
+
+        match inst.opcode() {
+            OpCode::ADD => self.add(inst),
+            OpCode::AND => self.and(inst),
+            OpCode::NOT => self.not(inst),
+            OpCode::BR => self.br(inst),
+            OpCode::JMP => self.jmp(inst),
+            OpCode::JSR => self.jsr(inst),
+            OpCode::LD => self.ld(inst),
+            OpCode::LDI => self.ldi(inst),
+            OpCode::LDR => self.ldr(inst),
+            OpCode::LEA => self.lea(inst),
+            OpCode::ST => self.st(inst),
+            OpCode::STI => self.sti(inst),
+            OpCode::STR => self.str(inst),
+            OpCode::TRAP => self.trap_emulated(inst)?,
+            OpCode::RTI | OpCode::RES => return Err(Error::OpCodeNotImplemented),
+        }
+
+        Ok(())
     }
 }
 
@@ -159,7 +161,7 @@ impl<IO: IoDevice> LC3<IO> {
 
     fn br(&mut self, inst: u16) {
         let cc = inst.condcodes();
-        if self.registers.cc.intersects(&cc) {
+        if self.registers.cc.intersects(cc) {
             let value = self.registers.pc.wrapping_add(inst.imm9());
             self.registers.pc = value;
         }
@@ -236,7 +238,12 @@ impl<IO: IoDevice> LC3<IO> {
         self.registers.cc = CondCodes::from_signum(result);
     }
 
-    fn trap(&mut self, inst: u16) -> Result<Status, Error<IO::Error>> {
+    fn trap(&mut self, inst: u16) {
+        self.registers.r7 = self.registers.pc;
+        self.registers.pc = self.memory.read(inst.imm8());
+    }
+
+    fn trap_emulated(&mut self, inst: u16) -> Result<(), Error<IO::Error>> {
         self.registers.r7 = self.registers.pc;
 
         let trapcode = match inst.trapcode() {
@@ -244,7 +251,7 @@ impl<IO: IoDevice> LC3<IO> {
             None => {
                 let msg = b"SYSTEM CALL NOT IMPLEMENTED ... HALTING.\n";
                 self.memory.io.write(msg)?;
-                return Err(Error::SystemCallNotImplemented);
+                return Ok(());
             }
         };
 
@@ -295,23 +302,26 @@ impl<IO: IoDevice> LC3<IO> {
             },
             TrapCode::HALT => {
                 self.memory.io.write(b"HALT\n")?;
-                return Ok(Status::Halt);
+                self.memory.write(Memory::<IO>::MCR, 0);
             }
         }
-        Ok(Status::Continue)
-    }
-}
 
-#[must_use]
-pub enum Status {
-    Continue,
-    Halt,
+        Ok(())
+    }
 }
 
 pub enum Error<IO> {
     Io(IO),
     OpCodeNotImplemented,
-    SystemCallNotImplemented,
+}
+
+impl<IO: fmt::Display> fmt::Display for Error<IO> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Error::Io(err) => err.fmt(f),
+            Error::OpCodeNotImplemented => f.write_str("opcode not implemented."),
+        }
+    }
 }
 
 impl<IO> From<IO> for Error<IO> {

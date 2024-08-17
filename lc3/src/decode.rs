@@ -115,18 +115,29 @@ pub trait InstructionDecode {
     ///  XXXX XXXXXX XXXXXX
     ///             │      │
     ///             └──────┘
-    ///             offset6
+    ///               imm6
     /// ```
     ///
     #[doc(alias = "offset6")]
     fn imm6(self) -> u16;
+    /// An 8-bit sign-extended value; bits \[7:0\] of an instruction.
+    ///
+    /// ```text
+    ///  XXXX XXXXX XXXXXXX
+    ///            │       │
+    ///            └───────┘
+    ///              imm8
+    /// ```
+    ///
+    #[doc(alias = "trapvect8")]
+    fn imm8(self) -> u16;
     /// A 9-bit sign-extended value; bits \[8:0\] of an instruction.
     ///
     /// ```text
     ///  XXXX XXX XXXXXXXXX
     ///          │         │
     ///          └─────────┘
-    ///            offset9
+    ///             imm9
     /// ```
     ///
     #[doc(alias = "pcoffset9")]
@@ -137,7 +148,7 @@ pub trait InstructionDecode {
     ///  XXXX X XXXXXXXXXXX
     ///        │           │
     ///        └───────────┘
-    ///          offset11
+    ///            imm11
     /// ```
     ///
     #[doc(alias = "pcoffset11")]
@@ -196,6 +207,14 @@ impl InstructionDecode for u16 {
             self & 0x001F
         } else {
             self | 0xFFE0
+        }
+    }
+
+    fn imm8(self) -> u16 {
+        if self & 0x0080 == 0 {
+            self & 0x00FF
+        } else {
+            self | 0xFF00
         }
     }
 

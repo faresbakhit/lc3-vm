@@ -30,36 +30,64 @@ pub struct Memory<IO: IoDevice> {
 }
 
 impl<IO: IoDevice> Memory<IO> {
-    /// Number of 'words' in [`Memory`] or length of underlying slice.
-    pub const LEN: usize = LEN;
+    /// Keyboard status register.
+    pub const KBSR: u16 = 0xFE00;
+    /// Keyboard data register.
+    pub const KBDR: u16 = 0xFE02;
+    /// Display status register.
+    pub const DSR: u16 = 0xFE04;
+    /// Display data register.
+    pub const DDR: u16 = 0xFE06;
+    /// Machine control register.
+    pub const MCR: u16 = 0xFFFE;
 
     /// Initialize a new memory device.
     pub const fn new(iodevice: IO) -> Memory<IO> {
+        let mut words = [0; LEN];
+        words[Self::MCR as usize] = 1 << 15;
         Memory {
-            words: [0; LEN],
+            words,
             io: iodevice,
         }
     }
 
+    /// Read the value at index `index` in memory.
     pub fn read(&mut self, index: u16) -> u16 {
-        const KBSR: usize = 0xFE00;
-        const KBDR: usize = 0xFE02;
-
-        if usize::from(index) == KBSR {
-            if self.io.poll() {
-                self.words[KBSR] = 1 << 15;
-                let mut byte = 0;
-                let _ = self.io.read(slice::from_mut(&mut byte));
-                self.words[KBDR] = u16::from(byte);
-            } else {
-                self.words[KBSR] = 0;
+        match index {
+            Self::KBSR => {
+                if self.io.poll() {
+                    1 << 15
+                } else {
+                    0
+                }
             }
+            Self::KBDR => {
+                if self.io.poll() {
+                    let mut byte = 0;
+                    let _ = self.io.read(slice::from_mut(&mut byte));
+                    byte as u16
+                } else {
+                    0
+                }
+            }
+            Self::DSR => 1 << 15,
+            Self::DDR => 0,
+            _ => self.words[index as usize],
         }
-
-        self.words[index as usize]
     }
 
+    /// Write `value` to the index `index` in memory.
     pub fn write(&mut self, index: u16, value: u16) {
+        match index {
+            Self::KBSR | Self::KBDR | Self::DSR => return,
+            Self::DDR => {
+                let byte = value as u8;
+                let _ = self.io.write(slice::from_ref(&byte));
+                let _ = self.io.flush();
+                return;
+            }
+            _ => {}
+        }
         self.words[index as usize] = value;
     }
 }
