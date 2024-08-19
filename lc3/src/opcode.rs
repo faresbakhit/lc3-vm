@@ -18,46 +18,47 @@
 
 /// Instruction opcodes in LC-3.
 ///
-/// - Arithmetics: [`OpCode::ADD`], [`OpCode::AND`], [`OpCode::NOT`]
-/// - Control flow: [`OpCode::BR`], [`OpCode::JMP`], [`OpCode::JSR`], [`OpCode::RTI`]
-/// - Load data: [`OpCode::LD`], [`OpCode::LDI`], [`OpCode::LDR`], [`OpCode::LEA`]
-/// - Store data: [`OpCode::ST`], [`OpCode::STR`], [`OpCode::STI`]
-/// - Input/Output: [`OpCode::TRAP`]
-/// - Reserved: [`OpCode::RES`]
+/// - Arithmetics: [`OpCode::Add`], [`OpCode::And`], [`OpCode::Not`]
+/// - Control flow: [`OpCode::Br`], [`OpCode::Jmp`], [`OpCode::Jsr`], [`OpCode::Rti`]
+/// - Load data: [`OpCode::Ld`], [`OpCode::Ldi`], [`OpCode::Ldr`], [`OpCode::Lea`]
+/// - Store data: [`OpCode::St`], [`OpCode::Str`], [`OpCode::Sti`]
+/// - Input/Output: [`OpCode::Trap`]
+/// - Reserved: [`OpCode::Res`]
 ///
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum OpCode {
     /// Conditional Branch.
-    BR,
+    Br,
     /// Addition.
-    ADD,
+    Add,
     /// Load.
-    LD,
+    Ld,
     /// Store.
-    ST,
+    St,
     /// Jump to subroutine.
     #[doc(alias = "JSRR")]
-    JSR,
+    Jsr,
     /// Bitwise Logical AND.
-    AND,
+    And,
     /// Load Base+Offset.
-    LDR,
+    Ldr,
     /// Store Base+Offset.
-    STR,
+    Str,
     /// Return from Interrupt.
-    RTI,
+    Rti,
     /// Bitwise Complement.
-    NOT,
+    Not,
     /// Load Indirect.
-    LDI,
+    Ldi,
     /// Store Indirect.
-    STI,
+    Sti,
     /// Jump, or Return from Subroutine.
     #[doc(alias = "RET")]
-    JMP,
+    Jmp,
     /// Reserved.
-    RES,
+    Res,
     /// Load Effective Address.
-    LEA,
+    Lea,
     /// System Call.
-    TRAP,
+    Trap,
 }

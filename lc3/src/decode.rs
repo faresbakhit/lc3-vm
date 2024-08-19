@@ -16,7 +16,7 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
 
-use crate::{CondCodes, OpCode, TrapCode, GPR};
+use crate::{CondCodes, OpCode, Reg, TrapCode};
 
 /// Instruction decoding functions.
 ///
@@ -33,7 +33,6 @@ use crate::{CondCodes, OpCode, TrapCode, GPR};
 /// └────┘ └────────────┘
 /// opcode   parameters
 /// ```
-///
 pub trait InstructionDecode {
     /// [`OpCode`]; bits \[15:12\].
     ///
@@ -43,16 +42,14 @@ pub trait InstructionDecode {
     /// └────┘
     /// opcode
     /// ```
-    ///
     fn opcode(self) -> OpCode;
     /// Condition codes; bits \[11:9\].
     ///
     /// The specification defines the condition codes as
     /// three 1-bit registers, but treating them as one
     /// 3-bit value is more efficient to.
-    ///
     fn condcodes(self) -> CondCodes;
-    /// Trap code; bits \[7:0\]
+    /// Trap code; bits \[7:0\].
     ///
     /// ```text
     ///  XXXX XXXX XXXXXXXX
@@ -60,7 +57,6 @@ pub trait InstructionDecode {
     ///           └────────┘
     ///            trapcode
     /// ```
-    ///
     fn trapcode(self) -> Option<TrapCode>;
     /// A DR/SR register value; bits \[11:9\].
     ///
@@ -70,10 +66,9 @@ pub trait InstructionDecode {
     ///      └───┘
     ///      reg1
     /// ```
-    ///
     #[doc(alias = "dr")]
     #[doc(alias = "sr")]
-    fn reg1(self) -> GPR;
+    fn reg1(self) -> Reg;
     /// A BaseR/SR1 register value; bits \[8:6\].
     ///
     /// ```text
@@ -82,10 +77,9 @@ pub trait InstructionDecode {
     ///          └───┘
     ///          reg2
     /// ```
-    ///
     #[doc(alias = "sr1")]
     #[doc(alias = "baser")]
-    fn reg2(self) -> GPR;
+    fn reg2(self) -> Reg;
     /// A SR2 register value; bits \[2:0\].
     ///
     /// ```text
@@ -94,9 +88,8 @@ pub trait InstructionDecode {
     ///                └───┘
     ///                reg3
     /// ```
-    ///
     #[doc(alias = "sr2")]
-    fn reg3(self) -> GPR;
+    fn reg3(self) -> Reg;
     /// Check if the bit *b* is set to 1, starting from 0.
     fn isbitset(self, b: i32) -> bool;
     /// A 5-bit sign-extended immediate value; bits \[4:0\] of an instruction.
@@ -107,7 +100,6 @@ pub trait InstructionDecode {
     ///              └─────┘
     ///               imm5
     /// ```
-    ///
     fn imm5(self) -> u16;
     /// A 6-bit sign-extended value; bits \[5:0\] of an instruction.
     ///
@@ -117,7 +109,6 @@ pub trait InstructionDecode {
     ///             └──────┘
     ///               imm6
     /// ```
-    ///
     #[doc(alias = "offset6")]
     fn imm6(self) -> u16;
     /// An 8-bit sign-extended value; bits \[7:0\] of an instruction.
@@ -128,7 +119,6 @@ pub trait InstructionDecode {
     ///            └───────┘
     ///              imm8
     /// ```
-    ///
     #[doc(alias = "trapvect8")]
     fn imm8(self) -> u16;
     /// A 9-bit sign-extended value; bits \[8:0\] of an instruction.
@@ -139,7 +129,6 @@ pub trait InstructionDecode {
     ///          └─────────┘
     ///             imm9
     /// ```
-    ///
     #[doc(alias = "pcoffset9")]
     fn imm9(self) -> u16;
     /// An 11-bit sign-extended value; bits \[10:0\] of an instruction.
@@ -150,7 +139,6 @@ pub trait InstructionDecode {
     ///        └───────────┘
     ///            imm11
     /// ```
-    ///
     #[doc(alias = "pcoffset11")]
     fn imm11(self) -> u16;
 }
@@ -178,16 +166,16 @@ impl InstructionDecode for u16 {
         TrapCode::from_u16(self)
     }
 
-    fn reg1(self) -> GPR {
-        GPR::from_u16(self >> 9)
+    fn reg1(self) -> Reg {
+        Reg::from_u16(self >> 9)
     }
 
-    fn reg2(self) -> GPR {
-        GPR::from_u16(self >> 6)
+    fn reg2(self) -> Reg {
+        Reg::from_u16(self >> 6)
     }
 
-    fn reg3(self) -> GPR {
-        GPR::from_u16(self)
+    fn reg3(self) -> Reg {
+        Reg::from_u16(self)
     }
 
     fn isbitset(self, b: i32) -> bool {

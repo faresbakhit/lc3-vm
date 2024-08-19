@@ -17,14 +17,17 @@
 //
 
 use std::io::{self, Read, Stdin, Stdout, Write};
-use std::os::fd::AsRawFd;
+use std::mem::{self, MaybeUninit};
+use std::os::fd::{AsFd, AsRawFd, BorrowedFd};
 
 use crate::IoDevice;
 
 /// [termios(3)] [`IoDevice`][`crate::IoDevice`].
 ///
 /// [termios(3)]: https://man7.org/linux/man-pages/man3/termios.3.html
-pub struct Termios<W: Write + AsRawFd = Stdout, R: Read = Stdin> {
+#[derive(Clone, PartialEq, Eq, Hash)]
+pub struct Termios<W: Write + AsFd = Stdout, R: Read = Stdin> {
+    prev_ios: libc::termios,
     output: W,
     input: R,
 }
@@ -35,34 +38,33 @@ impl Termios {
     }
 }
 
-impl<W: Write + AsRawFd, R: Read> Termios<W, R> {
+impl<W: Write + AsFd, R: Read> Termios<W, R> {
     pub fn from(output: W, input: R) -> io::Result<Termios<W, R>> {
-        let fd = output.as_raw_fd();
-        let mut ios = termios::Termios::from_fd(fd)?;
-        ios.c_lflag &= !termios::ICANON & !termios::ECHO;
-        termios::tcsetattr(fd, termios::TCSAFLUSH, &ios)?;
-        Ok(Termios { output, input })
+        let mut ios = get_terminal_attr(output.as_fd())?;
+        let prev_ios = ios;
+        ios.c_lflag &= !libc::ICANON & !libc::ECHO;
+        set_terminal_attr(output.as_fd(), libc::TCSAFLUSH, &ios)?;
+        Ok(Termios {
+            prev_ios,
+            output,
+            input,
+        })
     }
 }
 
-impl<W: Write + AsRawFd, R: Read> Drop for Termios<W, R> {
+impl<W: Write + AsFd, R: Read> Drop for Termios<W, R> {
     fn drop(&mut self) {
-        let mut ios = match termios::Termios::from_fd(self.output.as_raw_fd()) {
-            Ok(ios) => ios,
-            Err(_) => return,
-        };
-        ios.c_lflag |= termios::ICANON | termios::ECHO;
-        let _ = termios::tcsetattr(self.output.as_raw_fd(), termios::TCSANOW, &ios);
+        let _ = set_terminal_attr(self.output.as_fd(), libc::TCSANOW, &self.prev_ios);
     }
 }
 
-impl<W: Write + AsRawFd, R: Read> Read for Termios<W, R> {
+impl<W: Write + AsFd, R: Read> Read for Termios<W, R> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         self.input.read(buf)
     }
 }
 
-impl<W: Write + AsRawFd, R: Read> Write for Termios<W, R> {
+impl<W: Write + AsFd, R: Read> Write for Termios<W, R> {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         self.output.write(buf)
     }
@@ -72,7 +74,7 @@ impl<W: Write + AsRawFd, R: Read> Write for Termios<W, R> {
     }
 }
 
-impl<W: Write + AsRawFd> IoDevice for Termios<W, Stdin> {
+impl<W: Write + AsFd> IoDevice for Termios<W, Stdin> {
     type Error = io::Error;
 
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
@@ -81,7 +83,7 @@ impl<W: Write + AsRawFd> IoDevice for Termios<W, Stdin> {
 
     fn poll(&self) -> bool {
         unsafe {
-            let mut readfds = std::mem::MaybeUninit::<libc::fd_set>::uninit();
+            let mut readfds = MaybeUninit::<libc::fd_set>::uninit();
             libc::FD_ZERO(readfds.as_mut_ptr());
             libc::FD_SET(libc::STDIN_FILENO, readfds.as_mut_ptr());
             let mut timeout = libc::timeval {
@@ -104,5 +106,25 @@ impl<W: Write + AsRawFd> IoDevice for Termios<W, Stdin> {
 
     fn flush(&mut self) -> Result<(), Self::Error> {
         self.output.flush()
+    }
+}
+
+fn get_terminal_attr(fd: BorrowedFd) -> io::Result<libc::termios> {
+    unsafe {
+        let mut termios = mem::zeroed();
+        ret(libc::tcgetattr(fd.as_raw_fd(), &mut termios))?;
+        Ok(termios)
+    }
+}
+
+fn set_terminal_attr(fd: BorrowedFd, when: libc::c_int, termios: &libc::termios) -> io::Result<()> {
+    ret(unsafe { libc::tcsetattr(fd.as_raw_fd(), when, termios) })
+}
+
+fn ret(raw: libc::c_int) -> io::Result<()> {
+    if raw == 0 {
+        Ok(())
+    } else {
+        Err(io::Error::last_os_error())
     }
 }

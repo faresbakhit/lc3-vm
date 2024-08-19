@@ -18,77 +18,75 @@
 
 use core::slice;
 
-use crate::IoDevice;
+use crate::{IoDevice, IoDeviceRegister};
 
 /// Number of 'words' in [`Memory`] or length of underlying slice.
 const LEN: usize = 1 << 16;
 
 /// Main memory unit in LC-3.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 pub struct Memory<IO: IoDevice> {
     words: [u16; LEN],
     pub(crate) io: IO,
 }
 
-impl<IO: IoDevice> Memory<IO> {
-    /// Keyboard status register.
-    pub const KBSR: u16 = 0xFE00;
-    /// Keyboard data register.
-    pub const KBDR: u16 = 0xFE02;
-    /// Display status register.
-    pub const DSR: u16 = 0xFE04;
-    /// Display data register.
-    pub const DDR: u16 = 0xFE06;
-    /// Machine control register.
-    pub const MCR: u16 = 0xFFFE;
+impl<IO: IoDevice + Default> Default for Memory<IO> {
+    fn default() -> Memory<IO> {
+        Memory {
+            words: [0; LEN],
+            io: Default::default(),
+        }
+    }
+}
 
+impl<IO: IoDevice> Memory<IO> {
     /// Initialize a new memory device.
     pub const fn new(iodevice: IO) -> Memory<IO> {
-        let mut words = [0; LEN];
-        words[Self::MCR as usize] = 1 << 15;
         Memory {
-            words,
+            words: [0; LEN],
             io: iodevice,
         }
     }
 
     /// Read the value at index `index` in memory.
     pub fn read(&mut self, index: u16) -> u16 {
-        match index {
-            Self::KBSR => {
+        match IoDeviceRegister::from_u16(index) {
+            Some(IoDeviceRegister::Kbsr) => {
                 if self.io.poll() {
-                    1 << 15
+                    IoDeviceRegister::STATUS_ACCEPT
                 } else {
-                    0
+                    IoDeviceRegister::STATUS_DECLINE
                 }
             }
-            Self::KBDR => {
+            Some(IoDeviceRegister::Kbdr) => {
                 if self.io.poll() {
                     let mut byte = 0;
                     let _ = self.io.read(slice::from_mut(&mut byte));
                     byte as u16
                 } else {
-                    0
+                    IoDeviceRegister::STATUS_DECLINE
                 }
             }
-            Self::DSR => 1 << 15,
-            Self::DDR => 0,
+            Some(IoDeviceRegister::Dsr) => IoDeviceRegister::STATUS_ACCEPT,
+            Some(IoDeviceRegister::Ddr) => IoDeviceRegister::STATUS_DECLINE,
             _ => self.words[index as usize],
         }
     }
 
     /// Write `value` to the index `index` in memory.
     pub fn write(&mut self, index: u16, value: u16) {
-        match index {
-            Self::KBSR | Self::KBDR | Self::DSR => return,
-            Self::DDR => {
+        match IoDeviceRegister::from_u16(index) {
+            Some(IoDeviceRegister::Mcr) | None => {
+                self.words[index as usize] = value;
+            }
+            Some(IoDeviceRegister::Ddr) => {
                 let byte = value as u8;
                 let _ = self.io.write(slice::from_ref(&byte));
                 let _ = self.io.flush();
                 return;
             }
-            _ => {}
+            _ => return,
         }
-        self.words[index as usize] = value;
     }
 }
 

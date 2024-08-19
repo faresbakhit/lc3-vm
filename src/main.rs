@@ -16,11 +16,11 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
 
-use lc3::{self, Termios, LC3};
+use lc3::{self, Lc3, Termios};
 use std::{env, fmt, fs::File, io, path::PathBuf, process::ExitCode};
 
 const LICENSE: &str = "lc3-vm  Copyright (c) 2024  Fares A. Bakhit <fares@duck.com>";
-const USAGE: &str = "[--no-default-os] [--emulate-trap-table] [IMAGE-FILE...]";
+const USAGE: &str = "[--no-default-os] [--virtual-trap-vector-table] [IMAGE-FILE...]";
 
 fn main() -> ExitCode {
     let arg0 = env::args().next().unwrap_or("path/to/lc3-vm".into());
@@ -48,11 +48,11 @@ fn main() -> ExitCode {
 }
 
 fn run() -> Result<(), Error> {
-    let mut lc3 = LC3::new(Termios::new()?);
+    let mut lc3 = Lc3::new(Termios::new()?);
 
     let mut files = Vec::with_capacity(env::args_os().len());
     let mut default_os = true;
-    let mut emulate_trap_table = false;
+    let mut virtual_trap_vector_table = false;
     let mut stop_options_processing = false;
 
     for arg in env::args_os().skip(1) {
@@ -60,11 +60,11 @@ fn run() -> Result<(), Error> {
             files.push(arg);
         } else if arg == "--no-default-os" {
             default_os = false;
-        } else if arg == "--emulate-trap-table" {
-            emulate_trap_table = true;
+        } else if arg == "--virtual-trap-vector-table" {
+            virtual_trap_vector_table = true;
         } else if arg == "--" {
             stop_options_processing = true;
-        } else if arg.as_encoded_bytes().starts_with(b"--") {
+        } else if arg.as_encoded_bytes().starts_with(b"-") {
             return Err(Error::new(
                 ErrorKind::UnrecognizedOption,
                 PathBuf::from(arg).display(),
@@ -75,7 +75,7 @@ fn run() -> Result<(), Error> {
     }
 
     if default_os {
-        let lc3os_img = include_bytes!("lc3tools-lc3os.obj");
+        let lc3os_img = include_bytes!("lc3os.obj");
         lc3.load_image(&mut lc3os_img.as_slice())?;
     }
 
@@ -85,13 +85,12 @@ fn run() -> Result<(), Error> {
             .with_context(PathBuf::from(x).display())
     })?;
 
-    if emulate_trap_table {
-        lc3.run_with_trap_emulated()?;
+    if virtual_trap_vector_table {
+        lc3.run_with_virtual_trap_vector_table()
     } else {
-        lc3.run()?;
+        lc3.run()
     }
-
-    Ok(())
+    .map_err(Error::from)
 }
 
 struct Error {
@@ -164,9 +163,9 @@ where
     ErrorKind: From<E>,
 {
     fn from(value: E) -> Error {
-        return Error {
+        Error {
             kind: ErrorKind::from(value),
             ctx: String::new(),
-        };
+        }
     }
 }

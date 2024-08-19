@@ -19,7 +19,7 @@
 use core::fmt;
 
 /// Condition codes: N (negative), Z (zero), and P (positive).
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub struct CondCodes(u16);
 
 impl fmt::Debug for CondCodes {

@@ -16,9 +16,9 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 //
 
-//! [Little Computer 3] implementation. [Specification].
+//! Virtual machine for the [LC-3] (Little Computer 3) architecture. [Specification].
 //!
-//! [Little Computer 3]: https://en.wikipedia.org/wiki/Little_Computer_3
+//! [LC-3]: https://en.wikipedia.org/wiki/Little_Computer_3
 //! [Specification]: https://www.jmeiners.com/lc3-vm/supplies/lc3-isa.pdf
 
 #![cfg_attr(not(feature = "std"), no_std)]
@@ -39,10 +39,10 @@ pub use condcodes::CondCodes;
 pub use decode::InstructionDecode;
 pub use image::ImageFile;
 pub use io::IoDevice;
-pub use lc3::{Error, LC3};
+pub use lc3::{Error, Lc3};
 pub use memory::Memory;
 pub use opcode::OpCode;
-pub use registers::{Registers, GPR};
+pub use registers::{IoDeviceRegister, Reg, Registers};
 #[cfg(feature = "termios")]
 pub use termios::Termios;
 pub use trapcode::TrapCode;

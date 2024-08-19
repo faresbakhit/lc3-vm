@@ -19,23 +19,30 @@
 use crate::ImageFile;
 use crate::InstructionDecode;
 use crate::IoDevice;
+use crate::IoDeviceRegister;
 use crate::Memory;
 use crate::OpCode;
 use crate::TrapCode;
-use crate::{CondCodes, Registers, GPR};
+use crate::{CondCodes, Reg, Registers};
 
 use core::{fmt, slice};
 
 /// LC-3 virtual machine.
-pub struct LC3<IO: IoDevice> {
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub struct Lc3<IO: IoDevice> {
     registers: Registers,
     memory: Memory<IO>,
 }
 
-impl<IO: IoDevice> LC3<IO> {
+impl<IO: IoDevice> Lc3<IO> {
+    pub const TRAP_VECTOR_TABLE_START: u16 = 0x0000;
+    pub const INTERRUPT_VECTOR_TABLE_START: u16 = 0x0100;
+    pub const OPERATING_SYSTEM_START: u16 = 0x0200;
+    pub const USER_PROGRAMS_START: u16 = 0x3000;
+
     /// Initialize a new LC-3 virtual machine with an [`IoDevice`][`crate::IoDevice`].
-    pub const fn new(iodevice: IO) -> LC3<IO> {
-        LC3 {
+    pub const fn new(iodevice: IO) -> Lc3<IO> {
+        Lc3 {
             registers: Registers::new(),
             memory: Memory::new(iodevice),
         }
@@ -46,19 +53,35 @@ impl<IO: IoDevice> LC3<IO> {
         file.load_image_into(self.memory.as_mut())
     }
 
-    /// Run indefinitely.
+    /// Run indefinitely at [`Self::USER_PROGRAMS_START`] until [`Self::should_halt`] returns true.
     pub fn run(&mut self) -> Result<(), Error<IO::Error>> {
-        while self.memory.read(Memory::<IO>::MCR).isbitset(15) {
-            self.next_instruction()?;
-        }
-
-        Ok(())
+        self.run_at(Self::USER_PROGRAMS_START)
     }
 
-    /// Run indefinitely with trap emulated.
-    pub fn run_with_trap_emulated(&mut self) -> Result<(), Error<IO::Error>> {
-        while self.memory.read(Memory::<IO>::MCR).isbitset(15) {
-            self.next_instruction_with_trap_emulated()?;
+    // Run indefinitely at `addr` until [`Self::should_halt`] returns true.
+    pub fn run_at(&mut self, addr: u16) -> Result<(), Error<IO::Error>> {
+        self.run_common::<false>(addr)
+    }
+
+    /// Run indefinitely at [`Self::USER_PROGRAMS_START`] with trap emulated until [`Self::should_halt`] returns true.
+    pub fn run_with_virtual_trap_vector_table(&mut self) -> Result<(), Error<IO::Error>> {
+        // self.boot_with_virtual_trap_vector_table()?;
+        self.run_with_virtual_trap_vector_table_at(Self::USER_PROGRAMS_START)
+    }
+
+    /// Run indefinitely with trap emulated at `addr` until [`Self::should_halt`] returns true.
+    pub fn run_with_virtual_trap_vector_table_at(
+        &mut self,
+        addr: u16,
+    ) -> Result<(), Error<IO::Error>> {
+        self.run_common::<true>(addr)
+    }
+
+    fn run_common<const VIRT_TVT: bool>(&mut self, addr: u16) -> Result<(), Error<IO::Error>> {
+        self.reset();
+        self.registers.pc = addr;
+        while !self.should_halt() {
+            self.next_instruction_common::<VIRT_TVT>()?;
         }
 
         Ok(())
@@ -66,35 +89,17 @@ impl<IO: IoDevice> LC3<IO> {
 
     /// Execute next instruction.
     pub fn next_instruction(&mut self) -> Result<(), Error<IO::Error>> {
-        let inst = self.memory.read(self.registers.pc);
-
-        // All instructions with a PC offset parameter
-        // require PC to be incremented.
-        self.registers.pc = self.registers.pc.wrapping_add(1);
-
-        match inst.opcode() {
-            OpCode::ADD => self.add(inst),
-            OpCode::AND => self.and(inst),
-            OpCode::NOT => self.not(inst),
-            OpCode::BR => self.br(inst),
-            OpCode::JMP => self.jmp(inst),
-            OpCode::JSR => self.jsr(inst),
-            OpCode::LD => self.ld(inst),
-            OpCode::LDI => self.ldi(inst),
-            OpCode::LDR => self.ldr(inst),
-            OpCode::LEA => self.lea(inst),
-            OpCode::ST => self.st(inst),
-            OpCode::STI => self.sti(inst),
-            OpCode::STR => self.str(inst),
-            OpCode::TRAP => self.trap(inst),
-            OpCode::RTI | OpCode::RES => return Err(Error::OpCodeNotImplemented),
-        }
-
-        Ok(())
+        self.next_instruction_common::<false>()
     }
 
     /// Execute next instruction with trap emulated.
-    pub fn next_instruction_with_trap_emulated(&mut self) -> Result<(), Error<IO::Error>> {
+    pub fn next_instruction_with_virtual_trap_vector_table(
+        &mut self,
+    ) -> Result<(), Error<IO::Error>> {
+        self.next_instruction_common::<true>()
+    }
+
+    fn next_instruction_common<const VIRT_TVT: bool>(&mut self) -> Result<(), Error<IO::Error>> {
         let inst = self.memory.read(self.registers.pc);
 
         // All instructions with a PC offset parameter
@@ -102,28 +107,50 @@ impl<IO: IoDevice> LC3<IO> {
         self.registers.pc = self.registers.pc.wrapping_add(1);
 
         match inst.opcode() {
-            OpCode::ADD => self.add(inst),
-            OpCode::AND => self.and(inst),
-            OpCode::NOT => self.not(inst),
-            OpCode::BR => self.br(inst),
-            OpCode::JMP => self.jmp(inst),
-            OpCode::JSR => self.jsr(inst),
-            OpCode::LD => self.ld(inst),
-            OpCode::LDI => self.ldi(inst),
-            OpCode::LDR => self.ldr(inst),
-            OpCode::LEA => self.lea(inst),
-            OpCode::ST => self.st(inst),
-            OpCode::STI => self.sti(inst),
-            OpCode::STR => self.str(inst),
-            OpCode::TRAP => self.trap_emulated(inst)?,
-            OpCode::RTI | OpCode::RES => return Err(Error::OpCodeNotImplemented),
+            OpCode::Add => self.add(inst),
+            OpCode::And => self.and(inst),
+            OpCode::Not => self.not(inst),
+            OpCode::Br => self.br(inst),
+            OpCode::Jmp => self.jmp(inst),
+            OpCode::Jsr => self.jsr(inst),
+            OpCode::Ld => self.ld(inst),
+            OpCode::Ldi => self.ldi(inst),
+            OpCode::Ldr => self.ldr(inst),
+            OpCode::Lea => self.lea(inst),
+            OpCode::St => self.st(inst),
+            OpCode::Sti => self.sti(inst),
+            OpCode::Str => self.str(inst),
+            OpCode::Trap if VIRT_TVT => self.trap_emulated(inst)?,
+            OpCode::Trap => self.trap(inst),
+            OpCode::Rti | OpCode::Res => return Err(Error::OpCodeNotImplemented),
         }
 
         Ok(())
     }
+
+    /// Returns true iff the clock enable bit of [`IoDeviceRegister::Mcr`] is cleared.
+    pub fn should_halt(&mut self) -> bool {
+        !self.memory.read(IoDeviceRegister::Mcr as u16).isbitset(15)
+    }
+
+    /// Clears the clock enable bit of [`IoDeviceRegister::Mcr`].
+    pub fn halt(&mut self) {
+        self.memory.write(
+            IoDeviceRegister::Mcr as u16,
+            IoDeviceRegister::STATUS_DECLINE,
+        );
+    }
+
+    /// Turns on the clock enable bit of [`IoDeviceRegister::Mcr`].
+    pub fn reset(&mut self) {
+        self.memory.write(
+            IoDeviceRegister::Mcr as u16,
+            IoDeviceRegister::STATUS_ACCEPT,
+        );
+    }
 }
 
-impl<IO: IoDevice> LC3<IO> {
+impl<IO: IoDevice> Lc3<IO> {
     fn add(&mut self, inst: u16) {
         let dr = inst.reg1();
         let sr1 = inst.reg2();
@@ -233,7 +260,7 @@ impl<IO: IoDevice> LC3<IO> {
         self.memory.write(addr, self.registers[sr]);
     }
 
-    fn setcc(&mut self, dr: GPR) {
+    fn setcc(&mut self, dr: Reg) {
         let result = self.registers[dr];
         self.registers.cc = CondCodes::from_signum(result);
     }
@@ -249,25 +276,24 @@ impl<IO: IoDevice> LC3<IO> {
         let trapcode = match inst.trapcode() {
             Some(trapcode) => trapcode,
             None => {
-                let msg = b"SYSTEM CALL NOT IMPLEMENTED ... HALTING.\n";
-                self.memory.io.write(msg)?;
+                self.memory.io.write(b"UNDEFINED TRAP EXECUTED")?;
                 return Ok(());
             }
         };
 
         match trapcode {
-            TrapCode::GETC => {
+            TrapCode::Getc => {
                 let mut byte = 0;
                 self.memory.io.read(slice::from_mut(&mut byte))?;
                 self.registers.r0 = byte as u16;
-                self.setcc(GPR::R0);
+                self.setcc(Reg::R0);
             }
-            TrapCode::OUT => {
+            TrapCode::Out => {
                 let byte = self.registers.r0 as u8;
                 self.memory.io.write(slice::from_ref(&byte))?;
                 self.memory.io.flush()?;
             }
-            TrapCode::PUTS => {
+            TrapCode::Puts => {
                 let mut sp = self.registers.r0;
                 let mut byte = self.memory.read(sp) as u8;
                 while byte != 0 {
@@ -277,7 +303,7 @@ impl<IO: IoDevice> LC3<IO> {
                 }
                 self.memory.io.flush()?;
             }
-            TrapCode::IN => {
+            TrapCode::In => {
                 self.memory.io.write(b"Enter a character: ")?;
                 let mut byte = 0;
                 self.memory.io.read(slice::from_mut(&mut byte))?;
@@ -285,7 +311,7 @@ impl<IO: IoDevice> LC3<IO> {
                 self.memory.io.flush()?;
                 self.registers.r0 = byte as u16;
             }
-            TrapCode::PUTSP => unsafe {
+            TrapCode::PutSp => unsafe {
                 let sp = self.registers.r0;
                 let start = self.memory.as_ref().as_ptr().add(sp as usize) as *const u8;
                 let end = {
@@ -300,9 +326,9 @@ impl<IO: IoDevice> LC3<IO> {
                 self.memory.io.write(slice)?;
                 self.memory.io.flush()?;
             },
-            TrapCode::HALT => {
+            TrapCode::Halt => {
                 self.memory.io.write(b"HALT\n")?;
-                self.memory.write(Memory::<IO>::MCR, 0);
+                self.halt();
             }
         }
 
@@ -310,6 +336,8 @@ impl<IO: IoDevice> LC3<IO> {
     }
 }
 
+/// Error type for [`Lc3`] functions.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Error<IO> {
     Io(IO),
     OpCodeNotImplemented,
