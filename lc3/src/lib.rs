@@ -36,7 +36,7 @@ mod termios;
 mod trapcode;
 
 pub use condcodes::CondCodes;
-pub use decode::InstructionDecode;
+pub(crate) use decode::InstructionDecode;
 pub use image::ImageFile;
 pub use io::IoDevice;
 pub use lc3::{Error, Lc3};

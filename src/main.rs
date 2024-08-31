@@ -48,8 +48,6 @@ fn main() -> ExitCode {
 }
 
 fn run() -> Result<(), Error> {
-    let mut lc3 = Lc3::new(Termios::new()?);
-
     let mut files = Vec::with_capacity(env::args_os().len());
     let mut default_os = true;
     let mut virtual_trap_vector_table = false;
@@ -74,6 +72,8 @@ fn run() -> Result<(), Error> {
         }
     }
 
+    let mut lc3 = Lc3::new(Termios::new()?);
+
     if default_os {
         let lc3os_img = include_bytes!("lc3os.obj");
         lc3.load_image(&mut lc3os_img.as_slice())?;
@@ -82,7 +82,7 @@ fn run() -> Result<(), Error> {
     files.into_iter().try_for_each(|x| {
         File::open(&x)
             .and_then(|mut x| lc3.load_image(&mut x))
-            .with_context(PathBuf::from(x).display())
+            .err_with_context(PathBuf::from(x).display())
     })?;
 
     if virtual_trap_vector_table {
@@ -90,7 +90,7 @@ fn run() -> Result<(), Error> {
     } else {
         lc3.run()
     }
-    .map_err(Error::from)
+    .err_with_context("<termios>")
 }
 
 struct Error {
@@ -117,15 +117,15 @@ impl fmt::Display for Error {
     }
 }
 
-trait WithContext<T, E> {
-    fn with_context<C: ToString>(self, ctx: C) -> Result<T, Error>;
+trait ErrWithContext<T, E> {
+    fn err_with_context<C: ToString>(self, ctx: C) -> Result<T, Error>;
 }
 
-impl<T, E> WithContext<T, E> for Result<T, E>
+impl<T, E> ErrWithContext<T, E> for Result<T, E>
 where
     ErrorKind: From<E>,
 {
-    fn with_context<C: ToString>(self, ctx: C) -> Result<T, Error> {
+    fn err_with_context<C: ToString>(self, ctx: C) -> Result<T, Error> {
         self.map_err(|err| Error::new(ErrorKind::from(err), ctx))
     }
 }

@@ -58,23 +58,7 @@ impl<W: Write + AsFd, R: Read> Drop for Termios<W, R> {
     }
 }
 
-impl<W: Write + AsFd, R: Read> Read for Termios<W, R> {
-    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-        self.input.read(buf)
-    }
-}
-
-impl<W: Write + AsFd, R: Read> Write for Termios<W, R> {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.output.write(buf)
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        self.output.flush()
-    }
-}
-
-impl<W: Write + AsFd> IoDevice for Termios<W, Stdin> {
+impl<W: Write + AsFd, R: Read> IoDevice for Termios<W, R> {
     type Error = io::Error;
 
     fn read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {

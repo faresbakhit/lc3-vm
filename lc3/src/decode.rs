@@ -33,7 +33,7 @@ use crate::{CondCodes, OpCode, Reg, TrapCode};
 /// └────┘ └────────────┘
 /// opcode   parameters
 /// ```
-pub trait InstructionDecode {
+pub(crate) trait InstructionDecode {
     /// [`OpCode`]; bits \[15:12\].
     ///
     /// ```text

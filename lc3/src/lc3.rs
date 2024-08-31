@@ -30,8 +30,8 @@ use core::{fmt, slice};
 /// LC-3 virtual machine.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub struct Lc3<IO: IoDevice> {
-    registers: Registers,
-    memory: Memory<IO>,
+    pub registers: Registers,
+    pub memory: Memory<IO>,
 }
 
 impl<IO: IoDevice> Lc3<IO> {
